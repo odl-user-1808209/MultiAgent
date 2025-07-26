@@ -1,7 +1,14 @@
+from ctypes import _NamedFuncPointer
 import os
 import asyncio
+import subprocess
+from chainlit import user_session
 
 from dotenv import load_dotenv
+from autogen import GroupChat, GroupChatManager, AssistantAgent, UserProxyAgent
+from langchain.prompts import ChatPromptTemplate
+from autogen.agentchat.groupchat import AuthorRole
+from autogen.agentchat.conversable_agent import ConversableAgent
 from semantic_kernel.agents import AgentGroupChat, ChatCompletionAgent
 from semantic_kernel.agents.strategies.termination.termination_strategy import TerminationStrategy
 from semantic_kernel.agents.strategies.selection.kernel_function_selection_strategy import (
@@ -65,7 +72,7 @@ product_owner_prompts ="""You are a Software Engineer, and your goal is create a
 #Business Analyst Persona
 business_analyst = ChatCompletionAgent(
     kernel=kernel,
-    prompt_template=ChatPromptTemplate(system_prompt=business_analyst_prompts)
+    prompt_template=ChatPromptTemplate(system_prompt=business_analyst_prompts),
     name="BusinessAnalyst"
 )
 
@@ -73,7 +80,7 @@ business_analyst = ChatCompletionAgent(
 software_engineer = ChatCompletionAgent(
 
     kernel=kernel,
-    prompt_template=ChatPromptTemplate(system_prompt=software_engineer_prompts)
+    prompt_template=ChatPromptTemplate(system_prompt=software_engineer_prompts),
     name="SoftwareEngineer"
 )
 
@@ -81,38 +88,19 @@ software_engineer = ChatCompletionAgent(
 product_owner = ChatCompletionAgent(
 
     kernel=kernel,
-    prompt_template=ChatPromptTemplate(system_prompt=product_owner_prompts)
+    prompt_template=ChatPromptTemplate(system_prompt=product_owner_prompts),
     name="ProductOwner"
 )
-        #=== Post-processing: extract HTML code and save it ===
-        
-        async def post_process(history):
-            html_code = ""
-            for message in reversed(history.messages):
-                
-              if message.role == "assistant" and message.from_agent_id == "SoftwareEngineer":
-                    match = re.searh(r"(<html.*?</html>)", message.content, re.DOTALL | re.IGNORECARE)
-                   if match:
-                    html_code = match.group(0)
-                    break
-
-                    if html_code:
-                        with open("index.html","w",encoding="utf-8") as f:
-                            f.write(html_code)
-                            print("HTML code saved to index.html")
-
-                    else:
-                            print("No HTML code found in the Software Engineer's messages")
 
 
     # === Group Chat Set Up ===
   #Create the AgentGroupChat with all agents 
-    group_chat = AgentGroupChat(
-        agents=[business_analyst,software_engineer,product_owner],
-        execution_settings=AgentExecutionSettings(
-            terminnation=ApprovalTerminationStrategy()
-        )
-    )
+   # group_chat = AgentGroupChat(
+       # agents=[business_analyst,software_engineer,product_owner],
+        #execution_settings=AgentExecutionSettings(
+           # terminnation=ApprovalTerminationStrategy()
+       # )
+    #)
 
 # Agent Group Chat
 termination_strategy = ApprovalTerminationStrategy()
@@ -123,18 +111,21 @@ group_chat = AgentGroupChat(
 
 # Multi-Agent Execution
 
-  async def run_multi_agent(user_input: str):
+async def run_multi_agent(user_input: str):
    group_chat.add_chat_message(AuthorRole.User, user_input)
-
-   print("\n--Agent conversation Started --\n")
-
-    async for content in chat.invoke():
-      print(f"# {content.role} - {content.name or '*'}: '{content.content}'")
-
-    print("\n--Agent conversation Started --\n")
-
+   print("\n--- Agent conversation Started ---\n")
    
-   
+   results = await group_chat.invoke()
+   for content in results:
+       print(f"# {content.role} - {content.name or '*'}: '{content.content}'")
+       
+       print("\n--Agent conversation Started --\n")
+
+
+   if _NamedFuncPointer == "_main_":
+      user_session.input = input("Enter your request for the agent group:")
+      asyncio.run(run_multi_agent(user_input))
+      
 
 
 
