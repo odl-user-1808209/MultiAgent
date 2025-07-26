@@ -32,7 +32,28 @@ chat_service = AzureChatCompletion(
 )
 kernel.add_service(chat_service)
 
+#=== Termination Startegy =====
 
+class ApprovalTerminationStrategy(TerminationStrategy):
+    """A strategy for determining when an agent should terminate."""
+ 
+    async def should_agent_terminate(self, agent, history):
+        """Check if the agent should terminate."""
+        #Check if user said "APPROVED" in any message
+        for message in reversed(history.messages):
+            if message.role == AuthorRole.user and "APPROVED" in message.content.lower():
+                #Extract HTML from Software Engineer
+                if "SoftwareEngineer" in agent.name:
+                   for msg in reversed(history.message):
+                    if msg.role == AuthorRole.assistant and "<html>" in msg.content.lower():
+                        with open("index.html","w") as f:
+                            f.write(msg.content)
+                            print("[+] HTML extraxted and saved to index.html")
+
+                            #call push script
+                            subprocess.run(["bash", "push_to_github.sh"])
+                return True
+        return False
 
 #Agent Instructions (Persona Prompts)
 business_analyst_prompts = """You are a Business Analyst which will take the requirements from the user (also known as a 'customer') and create a project plan for creating the requested app. The Business Analyst understands the user requirements and creates detailed documents with requirements and costing. The documents should be usable by the SoftwareEngineer as a reference for implementing the required features, and by the Product Owner for reference to determine if the application delivered by the Software Engineer meets all of the user's requirements."""
@@ -46,8 +67,6 @@ business_analyst = ChatCompletionAgent(
     kernel=kernel,
     prompt_template=ChatPromptTemplate(system_prompt=business_analyst_prompts)
     name="BusinessAnalyst"
-    
-
 )
 
 #Software Engineer Persona
@@ -65,24 +84,6 @@ product_owner = ChatCompletionAgent(
     prompt_template=ChatPromptTemplate(system_prompt=product_owner_prompts)
     name="ProductOwner"
 )
-
-#=== Termination Startegy =====
-
-
-class ApprovalTerminationStrategy(TerminationStrategy):
-    """A strategy for determining when an agent should terminate."""
- 
-    async def should_agent_terminate(self, agent, history):
-        """Check if the agent should terminate."""
-        #Check if user said "APPROVED" in any message
-        for message in reversed(history.messages):
-            if message.role == "user" and "APPROVED" in message.content.lower():
-                print(f"Termination triggered by user approval: {message.content}")
-                await post_process(history)
-                return True
-        return False
-
-
         #=== Post-processing: extract HTML code and save it ===
         
         async def post_process(history):
@@ -113,12 +114,24 @@ class ApprovalTerminationStrategy(TerminationStrategy):
         )
     )
 
-    # === Main Entry Function ====
+# Agent Group Chat
+termination_strategy = ApprovalTerminationStrategy()
+group_chat = AgentGroupChat(
+    agents=[business_analyst, software_engineer, product_owner],
+    execution_settings={"termination_strategy": termination_strategy}
+)
 
-  async def run_multi_agent(input: str):
-    """implement the multi-agent system."""
-    responses = await group_chat.run(input)
-    return responses
+# Multi-Agent Execution
+
+  async def run_multi_agent(user_input: str):
+   group_chat.add_chat_message(AuthorRole.User, user_input)
+
+   print("\n--Agent conversation Started --\n")
+
+    async for content in chat.invoke():
+      print(f"# {content.role} - {content.name or '*'}: '{content.content}'")
+
+    print("\n--Agent conversation Started --\n")
 
    
    
